@@ -1,10 +1,8 @@
-name: TikTok Auto Upload 🎬
+name: TikTok Auto Upload
 
 on:
   schedule:
-    # Upload setiap hari jam 12:00 UTC (19:00 WIB)
     - cron: '0 12 * * *'
-  
   workflow_dispatch:
 
 jobs:
@@ -16,11 +14,6 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
     
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-    
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -29,86 +22,111 @@ jobs:
     
     - name: Download video from Google Drive
       run: |
-        echo "📥 Downloading video from Google Drive..."
-        # Pakai File ID yang udah dikasih
+        echo "Downloading video from Google Drive..."
         gdown "https://drive.google.com/uc?id=1NCYonDGrVwHsSXvN_6gr6GEWWge3HaHy" -O source_video.mp4
+    
+    - name: Extract video frame for analysis
+      id: frame
+      run: |
+        # Ambil screenshot di detik ke-10
+        ffmpeg -i source_video.mp4 -ss 10 -vframes 1 -y video_frame.jpg
+        echo "Frame berhasil diambil"
+    
+    - name: Analyze video with Gemini
+      id: video_analysis
+      env:
+        GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
+      run: |
+        # Encode frame ke base64
+        BASE64=$(base64 -w 0 video_frame.jpg)
         
-        # Cek ukuran file
-        ls -lh source_video.mp4
+        # Kirim ke Gemini buat analisis
+        curl -s -X POST "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "contents": [{
+              "parts": [
+                {"text": "Deskripsikan video ini secara singkat (max 50 kata). Fokus pada aktivitas, suasana, dan elemen visual utama."},
+                {"inline_data": {"mime_type": "image/jpeg", "data": "'"${BASE64}"'"}}
+              ]
+            }]
+          }' > analysis.json
+        
+        # Parse deskripsi
+        DESCRIPTION=$(jq -r '.candidates[0].content.parts[0].text' analysis.json)
+        echo "$DESCRIPTION" > video_description.txt
     
     - name: Cut video to 60 seconds
+      id: cut
       run: |
-        echo "✂️ Cutting video to 60 seconds..."
-        
-        # Cek durasi video
         DURATION=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 source_video.mp4)
-        echo "Video duration: $DURATION seconds"
-        
-        # Generate random start time (pastikan DURATION > 60)
         MAX_START=$(echo "$DURATION - 60" | bc)
         START_TIME=$(awk -v min=0 -v max=$MAX_START 'BEGIN{srand(); print min+rand()*(max-min)}')
-        echo "Start time: $START_TIME seconds"
         
-        # Potong video
         ffmpeg -i source_video.mp4 -ss $START_TIME -t 60 -c:v libx264 -c:a aac -preset fast -y output.mp4
-        
-        # Simpan info
-        echo "{\"date\":\"$(date)\",\"start_time\":$START_TIME}" > cut_info.json
+        echo "START_TIME=$START_TIME" >> $GITHUB_OUTPUT
     
-    - name: Generate caption
+    - name: Generate TikTok caption
       id: caption
+      env:
+        GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: |
-        echo "📝 Generating caption..."
+        DESCRIPTION=$(cat video_description.txt)
         
-        # Kumpulan caption dalam bahasa Indonesia
-        CAPTIONS=(
-          "Momen seru hari ini! ✨ #fyp #viral #daily #tiktok #indonesia"
-          "Auto upload dari GitHub Actions 🤖 #automation #coding"
-          "Check this out! 🔥 #viralvideo #foryoupage"
-          "Daily dose of entertainment 🎥 #tiktokindonesia"
-          "Another day, another video ✨ #contentcreator"
-          "Gak nyangka kejadian 😎 #dailyvlog #fyp"
-          "Part of my collection 🎬 #foryou #viral"
-          "Enjoy this clip! 🎞️ #indonesia #tiktok"
-        )
+        curl -s -X POST "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "contents": [{
+              "parts": [{
+                "text": "Buat 1 caption TikTok dalam bahasa Indonesia berdasarkan deskripsi video ini: '"${DESCRIPTION}"'. Gunakan bahasa gaul kekinian, sertakan emoji yang relevan, dan 5-7 hashtag. Langsung captionnya aja tanpa penjelasan lain."
+              }]
+            }],
+            "generationConfig": {"temperature": 0.9, "maxOutputTokens": 150}
+          }' > caption.json
         
-        # Pilih random
-        RANDOM_INDEX=$(( RANDOM % ${#CAPTIONS[@]} ))
-        SELECTED_CAPTION="${CAPTIONS[$RANDOM_INDEX]}"
-        
-        echo "SELECTED_CAPTION=$SELECTED_CAPTION" >> $GITHUB_OUTPUT
-        echo "Caption: $SELECTED_CAPTION"
+        CAPTION=$(jq -r '.candidates[0].content.parts[0].text' caption.json)
+        echo "$CAPTION" > final_caption.txt
+        echo "CAPTION<<EOF" >> $GITHUB_OUTPUT
+        cat final_caption.txt >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
     
-    - name: Save info for upload
+    - name: Kirim video ke Telegram
+      env:
+        TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        CAPTION: ${{ steps.caption.outputs.CAPTION }}
       run: |
-        cat > upload_info.txt << EOF
-        ================================
-        TIKTOK UPLOAD READY!
-        ================================
-        Username: @reemaas62
-        Date: $(date)
+        # Kirim video dengan caption
+        curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendVideo" \
+          -F chat_id="${CHAT_ID}" \
+          -F video=@output.mp4 \
+          -F caption="${CAPTION}" \
+          -F parse_mode="HTML"
         
-        Caption: ${{ steps.caption.outputs.SELECTED_CAPTION }}
-        
-        Video: output.mp4
-        Start time: $(cat cut_info.json | jq -r .start_time) seconds
-        
-        ================================
-        Download video dari artifacts 
-        dan upload manual ke TikTok!
-        ================================
-        EOF
-        
-        cat upload_info.txt
+        echo "Video sudah dikirim ke Telegram!"
     
-    - name: Upload video
-      uses: actions/upload-artifact@v3
-      with:
-        name: tiktok-video
-        path: output.mp4
+    - name: Kirim file caption terpisah (cadangan)
+      env:
+        TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        # Kirim file txt caption
+        curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendDocument" \
+          -F chat_id="${CHAT_ID}" \
+          -F document=@final_caption.txt \
+          -F caption="Caption backup - $(date)"
     
-    - name: Upload info
-      uses: actions/upload-artifact@v3
-      with:
-        name: upload-info
-        path: upload_info.txt
+    - name: Kirim info tambahan
+      env:
+        TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        MESSAGE="Video siap upload ke @reemaas62
+Start time: ${{ steps.cut.outputs.START_TIME }} detik
+Waktu: $(date)
+
+Caption udah termasuk di video, tinggal upload aja ke TikTok"
+        
+        curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+          -d chat_id="${CHAT_ID}" \
+          -d text="$MESSAGE"
