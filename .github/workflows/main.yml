@@ -1,0 +1,114 @@
+name: TikTok Auto Upload 🎬
+
+on:
+  schedule:
+    # Upload setiap hari jam 12:00 UTC (19:00 WIB)
+    - cron: '0 12 * * *'
+  
+  workflow_dispatch:
+
+jobs:
+  tiktok-upload:
+    runs-on: ubuntu-latest
+    name: Upload to @reemaas62
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg
+        pip install gdown
+    
+    - name: Download video from Google Drive
+      run: |
+        echo "📥 Downloading video from Google Drive..."
+        # Pakai File ID yang udah dikasih
+        gdown "https://drive.google.com/uc?id=1NCYonDGrVwHsSXvN_6gr6GEWWge3HaHy" -O source_video.mp4
+        
+        # Cek ukuran file
+        ls -lh source_video.mp4
+    
+    - name: Cut video to 60 seconds
+      run: |
+        echo "✂️ Cutting video to 60 seconds..."
+        
+        # Cek durasi video
+        DURATION=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 source_video.mp4)
+        echo "Video duration: $DURATION seconds"
+        
+        # Generate random start time (pastikan DURATION > 60)
+        MAX_START=$(echo "$DURATION - 60" | bc)
+        START_TIME=$(awk -v min=0 -v max=$MAX_START 'BEGIN{srand(); print min+rand()*(max-min)}')
+        echo "Start time: $START_TIME seconds"
+        
+        # Potong video
+        ffmpeg -i source_video.mp4 -ss $START_TIME -t 60 -c:v libx264 -c:a aac -preset fast -y output.mp4
+        
+        # Simpan info
+        echo "{\"date\":\"$(date)\",\"start_time\":$START_TIME}" > cut_info.json
+    
+    - name: Generate caption
+      id: caption
+      run: |
+        echo "📝 Generating caption..."
+        
+        # Kumpulan caption dalam bahasa Indonesia
+        CAPTIONS=(
+          "Momen seru hari ini! ✨ #fyp #viral #daily #tiktok #indonesia"
+          "Auto upload dari GitHub Actions 🤖 #automation #coding"
+          "Check this out! 🔥 #viralvideo #foryoupage"
+          "Daily dose of entertainment 🎥 #tiktokindonesia"
+          "Another day, another video ✨ #contentcreator"
+          "Gak nyangka kejadian 😎 #dailyvlog #fyp"
+          "Part of my collection 🎬 #foryou #viral"
+          "Enjoy this clip! 🎞️ #indonesia #tiktok"
+        )
+        
+        # Pilih random
+        RANDOM_INDEX=$(( RANDOM % ${#CAPTIONS[@]} ))
+        SELECTED_CAPTION="${CAPTIONS[$RANDOM_INDEX]}"
+        
+        echo "SELECTED_CAPTION=$SELECTED_CAPTION" >> $GITHUB_OUTPUT
+        echo "Caption: $SELECTED_CAPTION"
+    
+    - name: Save info for upload
+      run: |
+        cat > upload_info.txt << EOF
+        ================================
+        TIKTOK UPLOAD READY!
+        ================================
+        Username: @reemaas62
+        Date: $(date)
+        
+        Caption: ${{ steps.caption.outputs.SELECTED_CAPTION }}
+        
+        Video: output.mp4
+        Start time: $(cat cut_info.json | jq -r .start_time) seconds
+        
+        ================================
+        Download video dari artifacts 
+        dan upload manual ke TikTok!
+        ================================
+        EOF
+        
+        cat upload_info.txt
+    
+    - name: Upload video
+      uses: actions/upload-artifact@v3
+      with:
+        name: tiktok-video
+        path: output.mp4
+    
+    - name: Upload info
+      uses: actions/upload-artifact@v3
+      with:
+        name: upload-info
+        path: upload_info.txt
