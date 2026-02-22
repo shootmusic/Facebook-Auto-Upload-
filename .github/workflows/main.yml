@@ -112,7 +112,7 @@ jobs:
     - name: Upload to Facebook
       env:
         FB_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
-        FB_PAGE_ID: "217772062334204"
+        FB_PAGE_ID: "104884774466325"
         CAPTION: ${{ steps.caption.outputs.CAPTION }}
       run: |
         echo "🚀 Memulai upload ke Facebook..."
