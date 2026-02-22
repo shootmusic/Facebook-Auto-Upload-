@@ -88,9 +88,9 @@ jobs:
 
     - name: Kirim video ke Telegram
       env:
-        TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-        CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        CAPTION: ${{ steps.caption.outputs.CAPTION }}
+        TOKEN: ${ secrets.TELEGRAM_TOKEN }
+        CHAT_ID: ${ secrets.TELEGRAM_CHAT_ID }
+        CAPTION: ${ steps.caption.outputs.CAPTION }
       run: |
         curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendVideo" \
           -F chat_id="${CHAT_ID}" \
@@ -103,11 +103,12 @@ jobs:
     - name: Upload to Facebook (fbchat)
       env:
         FB_EMAIL: newnormalok522@gmail.com
-        FB_PASSWORD: ${{ secrets.FB_PASSWORD }}
-        CAPTION: ${{ steps.caption.outputs.CAPTION }}
-      run: | python3 << 'EOF'
+        FB_PASSWORD: ${ secrets.FB_PASSWORD }
+        CAPTION: ${ steps.caption.outputs.CAPTION }
+      run: |
+        python3 << 'EOF'
 import fbchat
-from fbchat.models import *
+from fbchat.models import ThreadType
 client = fbchat.Client("newnormalok522@gmail.com", "$FB_PASSWORD")
 client.send_local_video(
     video_path="output.mp4",
