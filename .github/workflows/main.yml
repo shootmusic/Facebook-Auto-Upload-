@@ -117,10 +117,8 @@ jobs:
 import fbchat
 from fbchat.models import *
 
-# Login ke Facebook
 client = fbchat.Client("newnormalok522@gmail.com", "$FB_PASSWORD")
 
-# Upload video ke page "Asupan Random +62" (ID: 100071696370546)
 client.send_local_video(
     video_path="output.mp4",
     message="$CAPTION",
