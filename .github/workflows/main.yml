@@ -105,11 +105,9 @@ jobs:
         FB_EMAIL: newnormalok522@gmail.com
         FB_PASSWORD: ${{ secrets.FB_PASSWORD }}
         CAPTION: ${{ steps.caption.outputs.CAPTION }}
-      run: |
-        python3 << 'EOF'
+      run: | python3 << 'EOF'
 import fbchat
 from fbchat.models import *
-
 client = fbchat.Client("newnormalok522@gmail.com", "$FB_PASSWORD")
 client.send_local_video(
     video_path="output.mp4",
