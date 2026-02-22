@@ -98,13 +98,16 @@ jobs:
         CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         CAPTION: ${{ steps.caption.outputs.CAPTION }}
       run: |
+        echo "Mengirim video ke Telegram..."
         curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendVideo" \
           -F chat_id="${CHAT_ID}" \
           -F video="@output.mp4" \
-          -F caption="${CAPTION}"
+          -F caption="${CAPTION}" && echo "Video terkirim"
+        
+        echo "Mengirim file caption ke Telegram..."
         curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendDocument" \
           -F chat_id="${CHAT_ID}" \
-          -F document="@final_caption.txt"
+          -F document="@final_caption.txt" && echo "File caption terkirim"
 
     - name: Upload to Facebook
       env:
@@ -112,27 +115,67 @@ jobs:
         FB_PAGE_ID: "100071696370546"
         CAPTION: ${{ steps.caption.outputs.CAPTION }}
       run: |
+        echo "🚀 Memulai upload ke Facebook..."
+        echo "Page ID: $FB_PAGE_ID"
+        echo "Caption: $CAPTION"
+        echo "Token length: ${#FB_TOKEN} karakter"
+        
         python3 << 'EOF'
         import requests
         import os
+        import sys
 
-        token = os.environ["FB_TOKEN"]
-        page_id = os.environ["FB_PAGE_ID"]
-        caption = os.environ["CAPTION"]
+        token = os.environ.get("FB_TOKEN", "")
+        page_id = os.environ.get("FB_PAGE_ID", "")
+        caption = os.environ.get("CAPTION", "")
+
+        if not token:
+            print("❌ ERROR: Token tidak ditemukan!")
+            sys.exit(1)
+
+        if not page_id:
+            print("❌ ERROR: Page ID tidak ditemukan!")
+            sys.exit(1)
+
+        print(f"📤 Uploading video ke page {page_id}...")
+        print(f"📝 Caption: {caption[:50]}...")
 
         url = f"https://graph.facebook.com/v18.0/{page_id}/videos"
 
-        with open("output.mp4", "rb") as f:
-            response = requests.post(url, data={
-                "description": caption,
-                "access_token": token
-            }, files={"source": f})
+        try:
+            with open("output.mp4", "rb") as f:
+                response = requests.post(
+                    url,
+                    data={
+                        "description": caption,
+                        "access_token": token
+                    },
+                    files={"source": f},
+                    timeout=120
+                )
 
-        result = response.json()
-        print(result)
+            result = response.json()
+            print("📦 Response dari Facebook:", result)
 
-        if "id" in result:
-            print("✅ Upload ke Facebook berhasil! Video ID:", result["id"])
-        else:
-            print("❌ Upload ke Facebook gagal:", result)
+            if "id" in result:
+                print("✅✅✅ UPLOAD KE FACEBOOK BERHASIL!")
+                print(f"🎬 Video ID: {result['id']}")
+                sys.exit(0)
+            else:
+                print("❌❌❌ UPLOAD GAGAL!")
+                if "error" in result:
+                    error = result["error"]
+                    print(f"🔴 Kode Error: {error.get('code', 'N/A')}")
+                    print(f"🔴 Pesan: {error.get('message', 'N/A')}")
+                    print(f"🔴 Type: {error.get('type', 'N/A')}")
+                sys.exit(1)
+
+        except Exception as e:
+            print(f"❌ Exception terjadi: {str(e)}")
+            sys.exit(1)
         EOF
+
+    - name: Status Upload Facebook
+      if: always()
+      run: |
+        echo "✅ Step upload Facebook selesai"
