@@ -46,16 +46,10 @@ jobs:
         DURATION=${{ steps.duration.outputs.duration }}
         MAX_START=$((DURATION - 60))
         
-        # Create used_cuts.txt if not exists
         touch used_cuts.txt
-        
-        # Count used cuts
         USED_COUNT=$(wc -l < used_cuts.txt)
-        TOTAL_SEGMENTS=$((MAX_START / 10))  # Estimate segments (every 10 seconds)
+        echo "🍂 Used cuts: $USED_COUNT"
         
-        echo "🍂 Used cuts: $USED_COUNT / ~$TOTAL_SEGMENTS"
-        
-        # Find unused random position
         while true; do
           START_TIME=$((RANDOM % MAX_START))
           if ! grep -q "^$START_TIME$" used_cuts.txt; then
@@ -84,25 +78,32 @@ jobs:
         FRAME1_B64=$(base64 -w 0 frame1.jpg)
         FRAME2_B64=$(base64 -w 0 frame2.jpg)
         FRAME3_B64=$(base64 -w 0 frame3.jpg)
-
+        
+        cat > payload.json << EOF
+        {
+          "contents": [{
+            "parts": [
+              {"text": "Analisis video pendek 60 detik dari VIKINGS Season 1 Episode 1. Berdasarkan 3 frame:\n\n1. BUAT JUDUL EPIC dalam bahasa Indonesia (max 60 karakter)\n2. BUAT CAPTION FACEBOOK engaging + 5-8 hashtag\n\nFormat:\nJUDUL: ...\nCAPTION: ..."},
+              {"inline_data": {"mime_type": "image/jpeg", "data": "${FRAME1_B64}"}},
+              {"inline_data": {"mime_type": "image/jpeg", "data": "${FRAME2_B64}"}},
+              {"inline_data": {"mime_type": "image/jpeg", "data": "${FRAME3_B64}"}}
+            ]
+          }],
+          "generationConfig": {
+            "temperature": 0.95,
+            "maxOutputTokens": 300
+          }
+        }
+        EOF
+        
         curl -s -X POST "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-pro:generateContent?key=${GEMINI_KEY}" \
           -H "Content-Type: application/json" \
-          -d '{
-            "contents": [{
-              "parts": [
-                {"text": "Analisis video pendek 60 detik dari VIKINGS Season 1 Episode 1. Berdasarkan 3 frame:\n\n1. BUAT JUDUL EPIC dalam bahasa Indonesia (max 60 karakter)\n2. BUAT CAPTION FACEBOOK engaging + 5-8 hashtag\n\nFormat:\nJUDUL: ...\nCAPTION: ..."},
-                {"inline_data": {"mime_type": "image/jpeg", "data": "'"${FRAME1_B64}"'"}},
-                {"inline_data": {"mime_type": "image/jpeg", "data": "'"${FRAME2_B64}"'"}},
-                {"inline_data": {"mime_type": "image/jpeg", "data": "'"${FRAME3_B64}"'"}}
-              ]
-            }],
-            "generationConfig": {"temperature": 0.95, "maxOutputTokens": 300}
-          }' > caption.json
-
+          -d @payload.json > caption.json
+        
         FULL_TEXT=$(jq -r '.candidates[0].content.parts[0].text' caption.json)
         TITLE=$(echo "$FULL_TEXT" | grep -oP 'JUDUL: \K[^\n]+' | head -1)
         CAPTION=$(echo "$FULL_TEXT" | grep -oP 'CAPTION: \K[^\n]+' | head -1)
-
+        
         echo "TITLE=$TITLE" >> $GITHUB_OUTPUT
         echo "CAPTION=$CAPTION" >> $GITHUB_OUTPUT
 
