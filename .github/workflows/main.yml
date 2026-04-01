@@ -202,17 +202,22 @@ jobs:
         print(f"📹 Video uploaded with ID: {video_id}")
         
         # 2. TUNGGU SEBENTAR BIAR FACEBOOK PROSES
-        time.sleep(3)
+        time.sleep(5)
         
-        # 3. AMBIL POST ID YANG BENAR
-        post_url = f"https://graph.facebook.com/v18.0/{video_id}?fields=parent,id&access_token={token}"
-        post_response = requests.get(post_url)
-        post_data = post_response.json()
+        # 3. AMBIL POST ID DARI ENDPOINT /videos DENGAN FIELD posts
+        posts_url = f"https://graph.facebook.com/v18.0/{page_id}/videos?fields=id,posts&access_token={token}"
+        posts_response = requests.get(posts_url)
+        posts_data = posts_response.json()
         
-        if "parent" in post_data and "id" in post_data["parent"]:
-            post_id = post_data["parent"]["id"]
-            print(f"✅ Got post ID from parent: {post_id}")
-        else:
+        post_id = None
+        for video in posts_data.get("data", []):
+            if video["id"] == video_id:
+                if "posts" in video and video["posts"]["data"]:
+                    post_id = video["posts"]["data"][0]["id"]
+                    print(f"✅ Got post ID from posts field: {post_id}")
+                    break
+        
+        if not post_id:
             post_id = f"{page_id}_{video_id}"
             print(f"⚠️ Using fallback post ID: {post_id}")
         
@@ -269,7 +274,7 @@ jobs:
           -d text="🔥 VIKINGS Upload #${USED_COUNT}\n📌 ${TITLE}\n💬 LIKE, COMMENT, SHARE!\n📊 Total: ${USED_COUNT}"
 
 
-  # ==================== JOB 2: AUTO LIKE & KOMEN (PER VIDEO BARU) ====================
+  # ==================== JOB 2: AUTO LIKE & KOMEN ====================
   auto-engagement:
     runs-on: ubuntu-latest
     needs: auto-upload
@@ -321,7 +326,7 @@ jobs:
         echo "✅ Auto engagement completed!"
 
 
-  # ==================== JOB 3: AUTO REPLY AI (SETIAP 30 MENIT, HANYA VIDEO < 30 HARI) ====================
+  # ==================== JOB 3: AUTO REPLY AI ====================
   auto-reply:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' && github.event.schedule == '*/30 * * * *'
