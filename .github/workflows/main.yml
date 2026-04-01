@@ -137,7 +137,7 @@ jobs:
       id: upload
       env:
         FB_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
-        FB_PAGE_ID: "104884774466325"
+        FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
         FULL_CAPTION: ${{ steps.caption.outputs.FULL_CAPTION }}
         TITLE: ${{ steps.caption.outputs.TITLE }}
       run: |
@@ -217,7 +217,7 @@ jobs:
         POST_ID=$(cat post_id.txt)
         
         COMMENTS=(
-          "⚔️ Viking terbaik! Like from Minningonebitcoin! 🔥"
+          "⚔️ Viking terbaik! Like from Asupan Random +62! 🔥"
           "🛡️ Ragnar would be proud! Share this! 💪"
           "🌊 Another epic moment from Vikings! Like & share!"
           "👑 Best scene ever! Who agrees? 👇"
@@ -240,7 +240,7 @@ jobs:
           -d "message=${RANDOM_COMMENT}" \
           -d "access_token=${FB_DUMMY_PAGE_TOKEN}" || echo "Comment failed"
         
-        echo "✅ Auto engagement from Minningonebitcoin completed!"
+        echo "✅ Auto engagement from Asupan Random +62 completed!"
 
 
   # ==================== JOB 3: AUTO REPLY AI ====================
