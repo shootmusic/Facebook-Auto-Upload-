@@ -167,18 +167,14 @@ jobs:
         TITLE: ${{ steps.caption.outputs.TITLE }}
       run: |
         python3 << 'PYTHON_SCRIPT'
-        import requests, os
-        from datetime import datetime
-        import time
+        import requests, os, time
         
         token = os.environ.get("FB_TOKEN", "")
         page_id = os.environ.get("FB_PAGE_ID", "")
-        full_caption = os.environ.get("FULL_CAPTION", "")
+        full_caption = os.environ.get("FULL_CAPTION", "").replace('\\n\\n', '\n\n').replace('\\n', '\n')
         title = os.environ.get("TITLE", "")
         
-        full_caption = full_caption.replace('\\n\\n', '\n\n').replace('\\n', '\n')
-        
-        # 1. UPLOAD VIDEO
+        # UPLOAD VIDEO
         url = f"https://graph.facebook.com/v18.0/{page_id}/videos"
         with open("output.mp4", "rb") as video_file:
             response = requests.post(
@@ -187,7 +183,8 @@ jobs:
                     "description": full_caption,
                     "title": title,
                     "access_token": token,
-                    "privacy": {"value": "EVERYONE"}
+                    "privacy": {"value": "EVERYONE"},
+                    "published": "true"
                 },
                 files={"source": video_file},
                 timeout=120
@@ -199,38 +196,19 @@ jobs:
             exit(1)
         
         video_id = result['id']
-        print(f"📹 Video uploaded with ID: {video_id}")
+        print(f"📹 Video uploaded: {video_id}")
         
-        # 2. TUNGGU SEBENTAR BIAR FACEBOOK PROSES
-        time.sleep(5)
-        
-        # 3. AMBIL POST ID DARI ENDPOINT /videos DENGAN FIELD posts
-        posts_url = f"https://graph.facebook.com/v18.0/{page_id}/videos?fields=id,posts&access_token={token}"
-        posts_response = requests.get(posts_url)
-        posts_data = posts_response.json()
-        
-        post_id = None
-        for video in posts_data.get("data", []):
-            if video["id"] == video_id:
-                if "posts" in video and video["posts"]["data"]:
-                    post_id = video["posts"]["data"][0]["id"]
-                    print(f"✅ Got post ID from posts field: {post_id}")
-                    break
-        
-        if not post_id:
-            post_id = f"{page_id}_{video_id}"
-            print(f"⚠️ Using fallback post ID: {post_id}")
-        
-        # 4. SIMPAN POST ID
-        upload_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # SIMPAN VIDEO ID AJA
         with open("post_id.txt", "w") as f:
-            f.write(post_id)
+            f.write(video_id)
         
-        # 5. SIMPAN KE HISTORY
+        # SIMPAN HISTORY
+        from datetime import datetime
+        upload_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with open("posted_videos.txt", "a") as f:
-            f.write(f"{post_id}|{upload_date}\n")
+            f.write(f"{video_id}|{upload_date}\n")
         
-        print(f"✅ Post ID saved: {post_id}")
+        print(f"✅ Video ID saved: {video_id}")
         PYTHON_SCRIPT
 
     - name: Upload artifacts
@@ -278,7 +256,7 @@ jobs:
   auto-engagement:
     runs-on: ubuntu-latest
     needs: auto-upload
-    if: always() && (github.event_name != 'schedule' || github.event.schedule == '0 23 * * *' || github.event.schedule == '0 10 * * *')
+    if: always()
     
     steps:
     - name: Download post data
@@ -295,12 +273,8 @@ jobs:
           exit 0
         fi
         
-        POST_ID=$(cat post_id.txt)
-        
-        if [[ ! "$POST_ID" =~ ^[0-9]+_[0-9]+$ ]]; then
-          echo "⚠️ Invalid post_id format: $POST_ID"
-          exit 0
-        fi
+        VIDEO_ID=$(cat post_id.txt)
+        echo "🎯 Video ID: $VIDEO_ID"
         
         COMMENTS=(
           "⚔️ Viking terbaik! Like from Asupan Random +62! 🔥"
@@ -313,13 +287,15 @@ jobs:
         RANDOM_INDEX=$((RANDOM % ${#COMMENTS[@]}))
         RANDOM_COMMENT="${COMMENTS[$RANDOM_INDEX]}"
         
-        echo "👍 Liking post: $POST_ID"
-        curl -s -X POST "https://graph.facebook.com/v18.0/${POST_ID}/likes?access_token=${FB_DUMMY_PAGE_TOKEN}" || echo "Like failed"
+        # LIKE VIDEO LANGSUNG
+        echo "👍 Liking video: $VIDEO_ID"
+        curl -s -X POST "https://graph.facebook.com/v18.0/${VIDEO_ID}/likes?access_token=${FB_DUMMY_PAGE_TOKEN}" || echo "Like failed"
         
         sleep 3
         
+        # COMMENT VIDEO LANGSUNG
         echo "💬 Commenting: $RANDOM_COMMENT"
-        curl -s -X POST "https://graph.facebook.com/v18.0/${POST_ID}/comments" \
+        curl -s -X POST "https://graph.facebook.com/v18.0/${VIDEO_ID}/comments" \
           -d "message=${RANDOM_COMMENT}" \
           -d "access_token=${FB_DUMMY_PAGE_TOKEN}" || echo "Comment failed"
         
@@ -364,13 +340,8 @@ jobs:
         touch replied_comments.txt
         CURRENT_DATE=$(date +%s)
         
-        while IFS='|' read -r POST_ID UPLOAD_DATE; do
-          if [ -z "$POST_ID" ] || [ -z "$UPLOAD_DATE" ]; then
-            continue
-          fi
-          
-          if [[ ! "$POST_ID" =~ ^[0-9]+_[0-9]+$ ]]; then
-            echo "⚠️ Invalid post_id format: $POST_ID, skipping..."
+        while IFS='|' read -r VIDEO_ID UPLOAD_DATE; do
+          if [ -z "$VIDEO_ID" ] || [ -z "$UPLOAD_DATE" ]; then
             continue
           fi
           
@@ -378,13 +349,13 @@ jobs:
           AGE_DAYS=$(( (CURRENT_DATE - UPLOAD_TIMESTAMP) / 86400 ))
           
           if [ $AGE_DAYS -ge 30 ]; then
-            echo "⏭️ Skip video $POST_ID (uploaded $AGE_DAYS days ago)"
+            echo "⏭️ Skip video $VIDEO_ID (uploaded $AGE_DAYS days ago)"
             continue
           fi
           
-          echo "📝 Checking comments for video $POST_ID ($AGE_DAYS days old)"
+          echo "📝 Checking comments for video $VIDEO_ID ($AGE_DAYS days old)"
           
-          curl -s -X GET "https://graph.facebook.com/v18.0/${POST_ID}/comments?access_token=${FB_PAGE_TOKEN}&order=reverse_chronological&limit=10" > comments.json
+          curl -s -X GET "https://graph.facebook.com/v18.0/${VIDEO_ID}/comments?access_token=${FB_PAGE_TOKEN}&order=reverse_chronological&limit=10" > comments.json
           
           jq -c '.data[]' comments.json | while read comment; do
             COMMENT_ID=$(echo "$comment" | jq -r '.id')
