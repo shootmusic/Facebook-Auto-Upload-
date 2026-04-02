@@ -7,7 +7,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ==================== AUTO UPLOAD ====================
   auto-upload:
     runs-on: ubuntu-latest
     
@@ -36,14 +35,6 @@ jobs:
         key: fb-used-cuts-stable
         restore-keys: |
           fb-used-cuts-
-
-    - name: Restore posted videos history
-      uses: actions/cache@v4
-      with:
-        path: posted_videos.txt
-        key: posted-videos-history
-        restore-keys: |
-          posted-videos-
 
     - name: Download video from Google Drive
       run: |
@@ -189,23 +180,13 @@ jobs:
         video_id = result['id']
         print(f"📹 Video uploaded: {video_id}")
         
-        with open("post_id.txt", "w") as f:
-            f.write(video_id)
-        
+        # Simpan ke file
         upload_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with open("posted_videos.txt", "a") as f:
             f.write(f"{video_id}|{upload_date}\n")
         
         print(f"✅ Video ID saved: {video_id}")
         PYTHON_SCRIPT
-
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: post-data
-        path: |
-          post_id.txt
-          posted_videos.txt
 
     - name: Save used cuts
       if: always()
@@ -214,12 +195,13 @@ jobs:
         path: used_cuts.txt
         key: fb-used-cuts-stable
 
-    - name: Save posted videos history
-      if: always()
-      uses: actions/cache/save@v4
-      with:
-        path: posted_videos.txt
-        key: posted-videos-history
+    - name: Push posted_videos.txt to repo
+      run: |
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config user.name "github-actions[bot]"
+        git add posted_videos.txt
+        git diff --quiet && git diff --staged --quiet || git commit -m "Update posted videos history [skip ci]"
+        git push
 
     - name: Send Telegram notification
       env:
